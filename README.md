@@ -1,4 +1,8 @@
 # grafana-report
+## 先上效果
+![image](https://user-images.githubusercontent.com/63449830/154011692-024fefee-4c2f-49bb-ba83-f3c18d3bc724.png)
+![1644909636(1)](https://user-images.githubusercontent.com/63449830/154012095-ccfa9645-404c-43ff-91ec-609109f81ea2.png)
+![image](https://user-images.githubusercontent.com/63449830/154012175-eae58c0e-0dbd-426e-bca1-a3ca9f515545.png)
 
 ## grafana-report编译部署 
 grafana本来不支持中文，改源码后支持，这里有大佬改好的现成的代码就可以拿来直接用了
@@ -11,6 +15,151 @@ go install -v grafana-reporter/cmd/grafana-reporter
 可直接grafana-reporter --help ，查看帮助并二进制启动。
 也可自制镜像或者docker pull alexcld/grafana-report:2.0.2 使用我的
 
+### grafana-deployment.yaml
+```
+apiVersion: apps/v1
+kind: Deployment 
+metadata:
+  name: grafana
+  namespace: ops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana
+  template:
+    metadata:
+      labels:
+        app: grafana
+    spec:
+      containers:
+      - name: grafana
+        image: grafana/grafana:8.3.3
+        env:
+        - name: GF_RENDERING_SERVER_URL               ## grafana-image-renderer插件地址，
+          value: "http://10.1.230.133:8081/render"
+        - name: GF_RENDERING_CALLBACK_URL             ## grafana地址
+          value: "http://172.22.254.57:30030"
+        - name: GF_LOG_FILTERS
+          value: "rendering:debug"
+        ports:
+          - containerPort: 3000
+            protocol: TCP
+        resources:
+          limits:
+            cpu: 100m            
+            memory: 256Mi          
+          requests:
+            cpu: 100m            
+            memory: 256Mi
+        volumeMounts:
+          - name: grafana-data
+            mountPath: /var/lib/grafana
+            subPath: grafana
+          - mountPath: /etc/localtime
+            name: timezone
+          #- name: grafana-config
+          #  mountPath: /etc/grafana/
+      securityContext:
+        fsGroup: 472
+        runAsUser: 472
+      volumes:
+      #- name: grafana-config
+      #  configMap: 
+      #    name: grafana-config
+      - name: grafana-data
+        persistentVolumeClaim:
+          claimName: grafana
+      - name: timezone
+        hostPath:
+          path: /usr/share/zoneinfo/Asia/Shanghai 
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: grafana 
+  namespace: ops
+spec:
+  storageClassName: "nfs-storage"
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana
+  namespace: ops
+spec:
+  type: NodePort
+  ports:
+  - port : 80
+    targetPort: 3000
+    nodePort: 30030
+  selector:
+    app: grafana
+```
+### grafana-report.yaml
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: ops
+  labels:
+    app: grafana-report
+  name: grafana-report
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana-report
+  template:
+    metadata:
+      labels:
+        app: grafana-report
+    spec:
+      containers:
+      - image: 'alexcld/grafana-report:2.0.2'           # grafana-report原本不支持中文dashboard,修改源码后并打成镜像已经支持中文
+        name: grafana-report
+        ports: 
+        - containerPort: 8686
+        env:
+          - name: TZ
+            value: Asia/Shanghai
+        command: ["/grafana-reporter","-ip","172.22.254.57:30030"]    # -ip 指定grafana地址
+      - image: 'grafana/grafana-image-renderer:latest'   # grafana-image-renderer插件用于将grafana模板转化为图片，我通过grafana-cli安装过很多次，启动都报错需要重新编译什么的，所以这里就直接通过镜像引入了，如果你有好的方法也可以留言给我 感谢
+        name: grafana-image-renderer
+        ports: 
+        - containerPort: 8081
+        env:
+          - name: TZ
+            value: Asia/Shanghai
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: grafana-report
+  namespace: ops
+  labels:
+    app: grafana-report
+spec:
+  type: NodePort
+  ports:
+    - name: grafana-report
+      protocol: TCP
+      port: 8686
+      targetPort: 8686
+      nodePort: 30868
+    - name: grafana-image-renderer
+      protocol: TCP
+      port: 8081
+      targetPort: 8081
+      nodePort: 30808
+  selector:
+    app: grafana-report
+```
 ## grafana 操作
 
 ### 创建API TOKEN
@@ -48,4 +197,27 @@ http://172.22.254.57:30868/api/v5/report/viOR-qvnkdasd?apitoken=eyJrIjoiNjRZQjJl
 
 ![image](https://user-images.githubusercontent.com/63449830/154008958-6940b093-9f5f-4357-a497-0577108f29fc.png)
 
+## shell for crontab
 
+配置好邮箱之后，通过shell脚本每天早上八点发送昨日grafana日报到领导邮箱。（领导一到公司就能看到，美滋滋）
+```
+#/bin/bash
+#auuthor:alex
+#shell for creating grafana dashboard report
+filepath=/opt/grafana/report/
+date=$(date +%Y-%m-%d-%H:%M)
+
+# dashboard report name
+filename_yunwei_ziyuan=运维资源全览-centernode-${date}.pdf
+
+# download grafana dashboard report
+wget -q -O ${filepath}${filename_yunwei_ziyuan} "http://172.22.254.57:30868/api/v5/report/viOR-qvnkdasd?apitoken=eyJrIjoiNjRZQjJlT2pKM1h2QVZLbTZWQ0pzMjFJSzdjSVFQUkYiLCJuIjoiZ3JhZmFuYS1yZXBvcnQiLCJpZCI6MX0=&from=now-24h&to=now&var-origin_prometheus=&var-Node=All&var-NameSpace=All&var-Container=All&var-Pod=All"
+
+sleep 30s
+
+# send email
+mail -i \
+-a ${filepath}${filename_yunwei_ziyuan} \
+-s "Grafana监控日报"-`date +%Y-%m-%d-%H:%M` \
+-c "21178857@qq.com" ywz0207@163.com < /opt/grafana/logs/send_mail.log 
+```
