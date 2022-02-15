@@ -31,6 +31,8 @@ http://172.22.254.57:30868/api/v5/report/viOR-qvnkdasd?apitoken=eyJrIjoiNjRZQjJl
 * /api/v5/report/ ：grafana-report接口路径
 * viOR-qvnkdasd ：dashboard id
 * ?apitoken=eyJrIjoiNjRZQjJlT2pKM1h2QVZLbTZWQ0pzMjFJSzdjSVFQUkYiLCJuIjoiZ3JhZmFuYS1yZXBvcnQiLCJpZCI6MX0= ：上边创建的API KEYS 用于访问grafana
+
+
 还有一个地方就是我们后续会通过wget下载pdf，这样就需要一个时间范围
 我一般是先在dashboard上选择好时间后点击 新加的link，然后打开的页面token后就有一串是时间范围直接拷贝过来到 定时任务的shell脚本
 
