@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: ops
+  labels:
+    app: grafana-report
+  name: grafana-report
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana-report
+  template:
+    metadata:
+      labels:
+        app: grafana-report
+    spec:
+      containers:
+      - image: 'alexcld/grafana-report:2.0.2'           # grafana-report原本不支持中文dashboard,修改源码后并打成镜像已经支持中文
+        name: grafana-report
+        ports: 
+        - containerPort: 8686
+        env:
+          - name: TZ
+            value: Asia/Shanghai
+        command: ["/grafana-reporter","-ip","172.22.254.57:30030"]    # -ip 指定grafana地址
+      - image: 'grafana/grafana-image-renderer:latest'   # grafana-image-renderer插件用于将grafana模板转化为图片，我通过grafana-cli安装过很多次，启动都报错需要重新编译什么的，所以这里就直接通过镜像引入了，如果你有好的方法也可以留言给我 感谢
+        name: grafana-image-renderer
+        ports: 
+        - containerPort: 8081
+        env:
+          - name: TZ
+            value: Asia/Shanghai
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: grafana-report
+  namespace: ops
+  labels:
+    app: grafana-report
+spec:
+  type: NodePort
+  ports:
+    - name: grafana-report
+      protocol: TCP
+      port: 8686
+      targetPort: 8686
+      nodePort: 30868
+    - name: grafana-image-renderer
+      protocol: TCP
+      port: 8081
+      targetPort: 8081
+      nodePort: 30808
+  selector:
+    app: grafana-report
