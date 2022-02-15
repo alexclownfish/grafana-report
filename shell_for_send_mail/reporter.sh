@@ -13,7 +13,7 @@ wget -q -O ${filepath}${filename_yunwei_ziyuan} "http://172.22.254.57:30868/api/
 sleep 30s
 
 # send email
-mail -i \ 
+mail -i \
 -a ${filepath}${filename_yunwei_ziyuan} \
 -s "Grafana监控日报"-`date +%Y-%m-%d-%H:%M` \
--c "21178857@qq.com" ywz0207@163.com < /opt/grafana/logs/send_mail.txt 
+-c "21178857@qq.com" ywz0207@163.com < /opt/grafana/logs/send_mail.log 
